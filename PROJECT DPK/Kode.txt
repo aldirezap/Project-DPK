@@ -1,0 +1,277 @@
+function doGet() {
+  return HtmlService.createTemplateFromFile('Index')
+    .evaluate()
+    .setTitle('Monitoring Selling DPK')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// Fungsi menyertakan file HTML/JS terpisah
+function include(filename) {
+  return HtmlService.createTemplateFromFile(filename).getRawContent();
+}
+
+// Mengambil Data Referensi / Master Data (Termasuk Target Per Pegawai dari Sheet REKAP)
+function getMasterData() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+// 1. Sheet Kode
+const sheetKode = ss.getSheetByName('Kode');
+const lastRowKode = sheetKode.getLastRow();
+const dataKode = lastRowKode > 1 ? sheetKode.getRange(2, 1, lastRowKode - 1, 7).getValues() : [];
+
+// 2. Sheet Nama Jabatan
+const sheetJabatan = ss.getSheetByName('Nama Jabatan');
+const lastRowJabatan = sheetJabatan.getLastRow();
+const dataJabatan = lastRowJabatan > 1 ? sheetJabatan.getRange(2, 1, lastRowJabatan - 1, 2).getValues() : [];
+  
+  // 3. Sheet REKAP (Membaca Target NoA pada Kolom R/18 & Target Volume pada Kolom S/19)
+  const sheetRekap = ss.getSheetByName('REKAP');
+  const lastRowRekap = sheetRekap.getLastRow();
+  const rekapMap = {};
+  
+  if (lastRowRekap >= 2) {
+    // Membaca Kolom B (Nama Pegawai) hingga Kolom S (Target Volume)
+    const dataRekap = sheetRekap.getRange(2, 2, lastRowRekap - 1, 18).getValues(); 
+    dataRekap.forEach(row => {
+      const nama = row[0]; // Kolom B
+      if (nama) {
+        rekapMap[nama] = {
+          targetNoA: Number(row[16]) || 0,   // Kolom R (Index ke-16 dari B)
+          targetVol: Number(row[17]) || 0    // Kolom S (Index ke-17 dari B)
+        };
+      }
+    });
+  }
+
+  const kdCabang = [...new Set(dataKode.map(r => r[0]).filter(Boolean))];
+  const jenisNasabah = [...new Set(dataKode.map(r => r[1]).filter(Boolean))];
+  const produk = [...new Set(dataKode.map(r => r[2]).filter(Boolean))];
+  const segmentasi = [...new Set(dataKode.map(r => r[3]).filter(Boolean))];
+  const kategoriNasabah = [...new Set(dataKode.map(r => r[4]).filter(Boolean))];
+  const realisasi = [...new Set(dataKode.map(r => r[5]).filter(Boolean))]; 
+  const jenisNisbah = [...new Set(dataKode.map(r => r[6]).filter(Boolean))];
+  
+  // Gabungkan Data Pegawai dengan Target dari Sheet REKAP
+  const pegawaiJabatan = dataJabatan.filter(r => r[0] !== "").map(r => {
+    const namaPeg = r[0];
+    const targetData = rekapMap[namaPeg] || { targetNoA: 4, targetVol: 4000000 }; // Default cadangan
+    return {
+      nama: namaPeg,
+      jabatan: r[1],
+      targetNoA: targetData.targetNoA,
+      targetVol: targetData.targetVol
+    };
+  });
+
+  return {
+    kdCabang,
+    jenisNasabah,
+    produk,
+    segmentasi,
+    kategoriNasabah,
+    realisasi,
+    jenisNisbah,
+    pegawaiJabatan
+  };
+}
+
+// Mengambil Seluruh Transaksi dari Sheet 'INPUTAN'
+// Mengambil Seluruh Transaksi dari Sheet 'INPUTAN'
+function getRawDataInputan() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('INPUTAN');
+  const lastRow = sheet.getLastRow();
+  
+  if (lastRow <= 1) return [];
+  
+  const data = sheet.getRange(2, 1, lastRow - 1, 15).getValues();
+  
+  // FILTER: Hanya ambil baris yang benar-benar punya Kode Cabang atau Nama Nasabah (Bukan Baris Kosong)
+  const validData = data.filter(r => r[1] !== "" || r[2] !== "");
+
+  return validData.map((r, idx) => ({
+    no: idx + 1, // Nomor urut otomatis dimulai dari 1
+    kdCabang: String(r[1]),
+    namaNasabah: r[2],
+    noRekening: String(r[3]),
+    jenisNasabah: r[4],
+    jabatan: r[5],
+    namaPegawai: r[6],
+    noA: Number(r[7]) || 1,
+    produk: r[8],
+    segmentasi: r[9],
+    kategoriNasabah: r[10],
+    volumeDana: Number(r[11]) || 0,
+    realisasi: r[12],
+    jenisNisbah: r[13],
+    keterangan: r[14],
+    week: r[12]
+  }));
+}
+
+// Menyimpan Inputan Data Baru
+// Menyimpan Inputan Data Baru
+function saveData(form) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('INPUTAN');
+    const lastRow = sheet.getLastRow();
+    // Konversi aman string angka ke Number
+    
+    
+    // Hitung jumlah baris data yang terisi saat ini
+    let dataCount = 0;
+    if (lastRow > 1) {
+      const existingData = sheet.getRange(2, 1, lastRow - 1, 15).getValues();
+      // Hitung baris yang tidak kosong
+      dataCount = existingData.filter(r => r[1] !== "" || r[2] !== "").length;
+    }
+    
+    // Nomor baru adalah jumlah data terisi + 1
+    const newNo = dataCount + 1;
+    const volDana = Number(String(form.volumeDana).replace(/[^0-9]/g, '')) || 0;
+    sheet.appendRow([
+      newNo,
+      form.kdCabang,
+      form.namaNasabah,
+      "'" + String(form.noRekening || ''), // <--- Paksa format Teks dengan tanda '
+      form.jenisNasabah,
+      form.jabatan,
+      form.namaPegawai,
+      Number(form.noA) || 1,
+      form.produk,
+      form.segmentasi,
+      form.kategoriNasabah,
+      Number(form.volumeDana) || 0,
+      form.realisasi,
+      form.jenisNisbah,
+      form.keterangan
+    ]);
+    
+    return { success: true, message: "Data transaksi berhasil disimpan!" };
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
+}
+// Mengupdate Data Transaksi yang Sudah Ada
+function updateData(form) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('INPUTAN');
+    
+    if (!sheet) {
+      return { success: false, message: "Sheet 'INPUTAN' tidak ditemukan!" };
+    }
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) {
+      return { success: false, message: "Belum ada data di spreadsheet!" };
+    }
+
+    // Ambil kolom No (Kolom A)
+    const dataNo = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    let rowIndexToUpdate = -1;
+
+    for (let i = 0; i < dataNo.length; i++) {
+      if (String(dataNo[i][0]).trim() === String(form.no).trim()) {
+        rowIndexToUpdate = i + 2; // Offset header
+        break;
+      }
+    }
+
+    if (rowIndexToUpdate === -1) {
+      return { success: false, message: "Data dengan No. " + form.no + " tidak ditemukan!" };
+    }
+    const volumeDanaMurni = Number(String(form.volumeDana).replace(/[^0-9]/g, '')) || 0;
+    // Update 15 kolom
+    sheet.getRange(rowIndexToUpdate, 1, 1, 15).setValues([[
+      Number(form.no) || 1,
+      String(form.kdCabang || ''),
+      String(form.namaNasabah || ''),
+      "'" + String(form.noRekening || ''), // <--- Paksa format Teks dengan tanda '
+      String(form.jenisNasabah || ''),
+      String(form.jabatan || ''),
+      String(form.namaPegawai || ''),
+      Number(form.noA) || 1,
+      String(form.produk || ''),
+      String(form.segmentasi || ''),
+      String(form.kategoriNasabah || ''),
+      Number(form.volumeDana) || 0,
+      String(form.realisasi || ''),
+      String(form.jenisNisbah || ''),
+      String(form.keterangan || '')
+    ]]);
+
+    return { success: true, message: "Data berhasil diperbarui!" };
+
+  } catch (error) {
+    return { success: false, message: error.message || error.toString() };
+  }
+}
+// Fungsi membaca data Goal Setting dari Sheet 'GoalSetting'
+function getGoalSettingData() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('GoalSetting');
+    if (!sheet) return [];
+
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return [];
+
+    const headers = data[0].map(h => String(h).trim().toLowerCase());
+    const idxCabang = headers.indexOf('kdcabang');
+    const idxVol = headers.indexOf('targetvol');
+    const idxNoA = headers.indexOf('targetnoa');
+
+    const result = [];
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row[idxCabang]) {
+        result.push({
+          kdCabang: String(row[idxCabang]),
+          targetVol: Number(row[idxVol]) || 0,
+          targetNoA: Number(row[idxNoA]) || 0
+        });
+      }
+    }
+    return result;
+  } catch (err) {
+    return [];
+  }
+}
+
+// Fungsi untuk Admin memperbarui Goal Setting langsung dari Web
+function updateGoalSettingSheet(dataList) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName('GoalSetting');
+    
+    // Jika sheet belum ada, buat sheet baru
+    if (!sheet) {
+      sheet = ss.insertSheet('GoalSetting');
+      sheet.appendRow(['KdCabang', 'TargetVol', 'TargetNoA']);
+    }
+
+    // Bersihkan isi lama kecuali header
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, 3).clearContent();
+    }
+
+    // Masukkan data baru
+    const rowsToInsert = dataList.map(item => [
+      item.kdCabang,
+      Number(item.targetVol) || 0,
+      Number(item.targetNoA) || 0
+    ]);
+
+    if (rowsToInsert.length > 0) {
+      sheet.getRange(2, 1, rowsToInsert.length, 3).setValues(rowsToInsert);
+    }
+
+    return { success: true, message: 'Goal Setting berhasil diperbarui!' };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}

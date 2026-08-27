@@ -1,0 +1,898 @@
+<script>
+  let globalRawData = [];
+  let masterOptions = { pegawaiJabatan: [] };
+  let charts = {};
+
+  const Toast = Swal.mixin({
+    toast: true,
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: 2500,
+    timerProgressBar: true,
+  });
+
+  window.onload = function() {
+    loadMasterOptions();
+    loadAllData();
+  };
+
+function switchMenu(menu) {
+  const dashSec = document.getElementById('sectionDashboard');
+  const inputSec = document.getElementById('sectionInput');
+  const goalSec = document.getElementById('sectionGoalSetting');
+  
+  const mDash = document.getElementById('menuDashboard');
+  const mInput = document.getElementById('menuInput');
+  const mGoal = document.getElementById('menuGoalSetting');
+  
+  const mobDash = document.getElementById('mobileMenuDashboard');
+  const mobInput = document.getElementById('mobileMenuInput');
+  const mobGoal = document.getElementById('mobileMenuGoalSetting');
+
+  // Sembunyikan semua section dulu
+  dashSec.style.display = 'none';
+  inputSec.style.display = 'none';
+  goalSec.style.display = 'none';
+
+  // Remove active state
+  mDash?.classList.remove('active');
+  mInput?.classList.remove('active');
+  mGoal?.classList.remove('active');
+  mobDash?.classList.remove('active');
+  mobInput?.classList.remove('active');
+  mobGoal?.classList.remove('active');
+
+  if (menu === 'dashboard') {
+    dashSec.style.display = 'block';
+    mDash?.classList.add('active');
+    mobDash?.classList.add('active');
+  } else if (menu === 'input') {
+    inputSec.style.display = 'block';
+    mInput?.classList.add('active');
+    mobInput?.classList.add('active');
+  } else if (menu === 'goalsetting') {
+    goalSec.style.display = 'block';
+    mGoal?.classList.add('active');
+    mobGoal?.classList.add('active');
+    renderGoalSetting(); // Render data goal setting
+  }
+}
+
+  function loadMasterOptions() {
+    google.script.run.withSuccessHandler(function(data) {
+      masterOptions = data || { pegawaiJabatan: [] };
+      
+      if (masterOptions.pegawaiJabatan && masterOptions.pegawaiJabatan.length > 0) {
+        masterOptions.pegawaiJabatan.sort((a, b) => {
+          return (a.nama || '').localeCompare(b.nama || '', 'id', { sensitivity: 'base' });
+        });
+      }
+
+      populateDropdown('filterCabang', masterOptions.kdCabang || []);
+      populateDropdown('filterProduk', masterOptions.produk || []);
+      populateDropdown('filterSegmen', masterOptions.segmentasi || []);
+      
+      const pegNames = (masterOptions.pegawaiJabatan || []).map(p => p.nama);
+      populateDropdown('filterPegawai', pegNames);
+
+      const jabs = [...new Set((masterOptions.pegawaiJabatan || []).map(p => p.jabatan))];
+      populateDropdown('filterJabatan', jabs);
+
+      populateDropdown('inKdCabang', masterOptions.kdCabang || []);
+      populateDropdown('inJenisNasabah', masterOptions.jenisNasabah || []);
+      populateDropdown('inProduk', masterOptions.produk || []);
+      populateDropdown('inSegmentasi', masterOptions.segmentasi || []);
+      populateDropdown('inKategoriNasabah', masterOptions.kategoriNasabah || []);
+      if(masterOptions.realisasi && masterOptions.realisasi.length > 0) {
+        populateDropdown('inRealisasi', masterOptions.realisasi);
+      }
+      populateDropdown('inJenisNisbah', masterOptions.jenisNisbah || []);
+      populateDropdown('inNamaPegawai', pegNames);
+
+      if (globalRawData.length > 0) {
+        applyFilters();
+      }
+    }).getMasterData();
+  }
+
+  function populateDropdown(id, items) {
+    const el = document.getElementById(id);
+    if(!el) return;
+    let html = el.id.startsWith('filter') ? `<option value="">Semua</option>` : `<option value="">-- Pilih --</option>`;
+    (items || []).forEach(item => {
+      if(item) html += `<option value="${item}">${item}</option>`;
+    });
+    el.innerHTML = html;
+  }
+
+  function autoFillJabatan() {
+    const name = document.getElementById('inNamaPegawai').value;
+    const found = (masterOptions.pegawaiJabatan || []).find(p => p.nama === name);
+    document.getElementById('inJabatan').value = found ? found.jabatan : '';
+  }
+
+  function loadAllData() {
+    Toast.fire({ icon: 'info', title: 'Sinkronisasi Data...' });
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        globalRawData = data || [];
+        applyFilters();
+        Toast.fire({ icon: 'success', title: 'Data Siap!' });
+      })
+      .withFailureHandler(function(err) {
+        Toast.fire({ icon: 'error', title: 'Gagal Load Data: ' + err.message });
+      })
+      .getRawDataInputan();
+  }
+
+  function applyFilters() {
+    const fCabang = document.getElementById('filterCabang').value;
+    const fProduk = document.getElementById('filterProduk').value;
+    const fPegawai = document.getElementById('filterPegawai').value;
+    const fJabatan = document.getElementById('filterJabatan').value;
+    const fSegmen = document.getElementById('filterSegmen').value;
+    const fWeek = document.getElementById('filterWeek').value;
+
+    const filtered = globalRawData.filter(item => {
+      return (!fCabang || item.kdCabang === fCabang) &&
+             (!fProduk || item.produk === fProduk) &&
+             (!fPegawai || item.namaPegawai === fPegawai) &&
+             (!fJabatan || item.jabatan === fJabatan) &&
+             (!fSegmen || item.segmentasi === fSegmen) &&
+             (!fWeek || item.week === fWeek);
+    });
+
+    renderDashboard(filtered);
+    renderProduktifitasPegawai(filtered);
+  }
+
+  function renderDashboard(data) {
+    const pegawaiList = masterOptions.pegawaiJabatan || [];
+
+    const totalNoA = data.reduce((sum, r) => sum + (Number(r.noA) || 0), 0);
+    const totalVol = data.reduce((sum, r) => sum + (Number(r.volumeDana) || 0), 0);
+    
+    const fPegawai = document.getElementById('filterPegawai') ? document.getElementById('filterPegawai').value : '';
+    const fJabatan = document.getElementById('filterJabatan') ? document.getElementById('filterJabatan').value : '';
+
+    let targetNoA = 0;
+    let targetVol = 0;
+
+    const filteredPegawai = pegawaiList.filter(p => {
+      return (!fPegawai || p.nama === fPegawai) &&
+             (!fJabatan || p.jabatan === fJabatan);
+    });
+
+    filteredPegawai.forEach(p => {
+      targetNoA += (Number(p.targetNoA) || 0);
+      targetVol += (Number(p.targetVol) || 0);
+    });
+
+    const pctNoA = targetNoA > 0 ? ((totalNoA / targetNoA) * 100).toFixed(1) : 0;
+    const pctVol = targetVol > 0 ? ((totalVol / targetVol) * 100).toFixed(1) : 0;
+
+    document.getElementById('cardTotalNoA').innerText = `${totalNoA.toLocaleString('id-ID')} / ${targetNoA.toLocaleString('id-ID')}`;
+    document.getElementById('cardPctNoA').innerText = `${pctNoA}%`;
+    document.getElementById('cardTargetNoAInfo').innerText = `Realisasi: ${totalNoA.toLocaleString('id-ID')} | Target: ${targetNoA.toLocaleString('id-ID')}`;
+
+    document.getElementById('cardTotalVolume').innerText = `Rp ${totalVol.toLocaleString('id-ID')}`;
+    document.getElementById('cardPctVolume').innerText = `${pctVol}%`;
+    document.getElementById('cardTargetVolumeInfo').innerText = `Target: Rp ${targetVol.toLocaleString('id-ID')}`;
+
+    renderTable(data);
+    renderLeaderboard(data);
+    renderCharts(data, targetVol);
+  }
+
+  function getKategoriProduktifitas(pct) {
+    if (pct <= 25) return { label: 'Tidak Produktif', badgeClass: 'bg-danger text-white' };
+    if (pct <= 50) return { label: 'Kurang Produktif', badgeClass: 'bg-warning text-dark' };
+    if (pct <= 75) return { label: 'Cukup Produktif', badgeClass: 'bg-info text-dark' };
+    if (pct <= 100) return { label: 'Produktif', badgeClass: 'bg-primary text-white' };
+    return { label: 'Sangat Produktif', badgeClass: 'bg-success text-white' };
+  }
+
+  function renderProduktifitasPegawai(data) {
+    const pegawaiList = masterOptions.pegawaiJabatan || [];
+    const tableBody = document.getElementById('tableProduktifitasBody');
+    const summaryEl = document.getElementById('summaryProduktifitas');
+
+    if (!tableBody || !summaryEl) return;
+
+    if (pegawaiList.length === 0) {
+      tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Memuat data pegawai...</td></tr>`;
+      return;
+    }
+
+    const fPegawai = document.getElementById('filterPegawai') ? document.getElementById('filterPegawai').value : '';
+    const fJabatan = document.getElementById('filterJabatan') ? document.getElementById('filterJabatan').value : '';
+
+    const filteredPegawai = pegawaiList.filter(p => {
+      return (!fPegawai || p.nama === fPegawai) &&
+             (!fJabatan || p.jabatan === fJabatan);
+    });
+
+    if (filteredPegawai.length === 0) {
+      tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Tidak ada data pegawai yang sesuai.</td></tr>`;
+      document.getElementById('totalPegawaiBadge').innerText = `0 Pegawai`;
+      summaryEl.innerHTML = `<div class="text-center text-muted small py-3">Tidak ada data</div>`;
+      return;
+    }
+
+    const volMap = {};
+    (data || []).forEach(r => {
+      if (r.namaPegawai) {
+        volMap[r.namaPegawai] = (volMap[r.namaPegawai] || 0) + (Number(r.volumeDana) || 0);
+      }
+    });
+
+    const counts = {
+      'Tidak Produktif': 0,
+      'Kurang Produktif': 0,
+      'Cukup Produktif': 0,
+      'Produktif': 0,
+      'Sangat Produktif': 0
+    };
+
+    const tableRows = filteredPegawai.map(peg => {
+      const realVol = volMap[peg.nama] || 0;
+      const targetVolPerPeg = Number(peg.targetVol) || 4000000;
+      const pct = targetVolPerPeg > 0 ? (realVol / targetVolPerPeg) * 100 : 0;
+      const kat = getKategoriProduktifitas(pct);
+
+      counts[kat.label]++;
+
+      return `
+        <tr>
+          <td><span class="fw-bold">${peg.nama}</span></td>
+          <td><small class="text-muted">${peg.jabatan || '-'}</small></td>
+          <td>Rp ${realVol.toLocaleString('id-ID')}</td>
+          <td>Rp ${targetVolPerPeg.toLocaleString('id-ID')}</td>
+          <td><span class="fw-bold">${pct.toFixed(1)}%</span></td>
+          <td><span class="badge ${kat.badgeClass}">${kat.label}</span></td>
+        </tr>
+      `;
+    });
+
+    tableBody.innerHTML = tableRows.join('');
+    document.getElementById('totalPegawaiBadge').innerText = `${filteredPegawai.length} Pegawai`;
+
+    const totalPeg = filteredPegawai.length || 1;
+    const categories = [
+      { label: 'Sangat Produktif (>100%)', key: 'Sangat Produktif', color: 'bg-success' },
+      { label: 'Produktif (76-100%)', key: 'Produktif', color: 'bg-primary' },
+      { label: 'Cukup Produktif (51-75%)', key: 'Cukup Produktif', color: 'bg-info' },
+      { label: 'Kurang Produktif (26-50%)', key: 'Kurang Produktif', color: 'bg-warning' },
+      { label: 'Tidak Produktif (0-25%)', key: 'Tidak Produktif', color: 'bg-danger' }
+    ];
+
+    summaryEl.innerHTML = categories.map(c => {
+      const count = counts[c.key];
+      const pctPeg = ((count / totalPeg) * 100).toFixed(0);
+      return `
+        <div class="p-2 border rounded-3 d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center">
+            <span class="badge ${c.color} p-1 me-2">&nbsp;</span>
+            <span class="small fw-semibold">${c.label}</span>
+          </div>
+          <span class="fw-bold small">${count} <small class="text-muted">(${pctPeg}%)</small></span>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderTable(data) {
+    const tbody = document.getElementById('closingTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = data.map(r => `
+      <tr>
+        <td><span class="fw-bold">${r.namaPegawai}</span></td>
+        <td><span class="badge bg-light text-dark border">${r.kdCabang}</span></td>
+        <td>${r.namaNasabah}</td>
+        <td><small class="text-muted">${r.noRekening}</small></td>
+        <td>${r.produk}</td>
+        <td><span class="badge bg-primary-subtle text-primary fw-semibold">${r.segmentasi}</span></td>
+        <td class="fw-bold text-end">Rp ${(Number(r.volumeDana) || 0).toLocaleString('id-ID')}</td>
+        <td class="text-center">
+          <button class="btn btn-sm btn-outline-primary rounded-circle" 
+                  data-bs-toggle="modal" 
+                  data-bs-target="#modalEdit" 
+                  onclick="openEditModal(${r.no})">
+            <i class="bi bi-pencil-fill"></i>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function renderLeaderboard(data) {
+    const topMap = {};
+    data.forEach(r => {
+      if (r.namaPegawai) {
+        topMap[r.namaPegawai] = (topMap[r.namaPegawai] || 0) + (Number(r.volumeDana) || 0);
+      }
+    });
+
+    const sorted = Object.keys(topMap)
+      .map(k => ({ name: k, vol: topMap[k] }))
+      .sort((a,b) => b.vol - a.vol)
+      .slice(0, 5);
+
+    const listEl = document.getElementById('topPetugasList');
+    if (!listEl) return;
+    
+    listEl.innerHTML = sorted.map((p, idx) => {
+      let badgeBg = "bg-light text-dark";
+      if(idx === 0) badgeBg = "bg-warning text-white";
+      if(idx === 1) badgeBg = "bg-secondary text-white";
+      if(idx === 2) badgeBg = "bg-danger text-white";
+
+      return `
+        <div class="list-group-item d-flex justify-content-between align-items-center border-0 px-0 py-2">
+          <div class="d-flex align-items-center overflow-hidden me-2">
+            <span class="badge rounded-circle ${badgeBg} me-2 fw-bold" style="width:24px; height:24px; line-height:16px;">${idx+1}</span>
+            <span class="fw-bold text-truncate" style="max-width: 140px;">${p.name}</span>
+          </div>
+          <span class="fw-bold text-primary small">Rp ${p.vol.toLocaleString('id-ID')}</span>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderCharts(data, targetVol) {
+    const groupBy = (arr, key, valKey) => arr.reduce((acc, obj) => {
+      const k = obj[key] || 'Unassigned';
+      acc[k] = (acc[k] || 0) + (Number(obj[valKey]) || 1);
+      return acc;
+    }, {});
+
+    const chartOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } }
+    };
+
+    // Chart Produk
+    const prodVol = groupBy(data, 'produk', 'volumeDana');
+    destroyChart('chartProduk');
+    charts['chartProduk'] = new Chart(document.getElementById('chartProduk'), {
+      type: 'bar',
+      data: {
+        labels: Object.keys(prodVol),
+        datasets: [{ label: 'Volume Dana', data: Object.values(prodVol), backgroundColor: '#4f46e5', borderRadius: 8 }]
+      },
+      options: chartOptions
+    });
+
+    // Chart Segmen
+    const segVol = groupBy(data, 'segmentasi', 'volumeDana');
+    destroyChart('chartSegmen');
+    charts['chartSegmen'] = new Chart(document.getElementById('chartSegmen'), {
+      type: 'bar',
+      data: {
+        labels: Object.keys(segVol),
+        datasets: [{ label: 'Volume Segmen', data: Object.values(segVol), backgroundColor: '#10b981', borderRadius: 8 }]
+      },
+      options: chartOptions
+    });
+
+    // Chart Line Target vs Realisasi
+    const weekVol = groupBy(data, 'week', 'volumeDana');
+    const weeks = ['WEEK 1', 'WEEK 2', 'WEEK 3', 'WEEK 4', 'WEEK 5'];
+    destroyChart('chartLineTarget');
+    charts['chartLineTarget'] = new Chart(document.getElementById('chartLineTarget'), {
+      type: 'line',
+      data: {
+        labels: weeks,
+        datasets: [
+          { label: 'Realisasi Volume', data: weeks.map(w => weekVol[w] || 0), borderColor: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.1)', fill: true, tension: 0.4 },
+          { label: 'Target Week', data: weeks.map(() => (targetVol || 0)/5), borderColor: '#ef4444', borderDash: [5,5] }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+
+    // Chart Donut Cabang
+    const cabVol = groupBy(data, 'kdCabang', 'volumeDana');
+    destroyChart('chartDonutCabang');
+    charts['chartDonutCabang'] = new Chart(document.getElementById('chartDonutCabang'), {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(cabVol),
+        datasets: [{ data: Object.values(cabVol), backgroundColor: ['#4f46e5', '#0ea5e9', '#f59e0b', '#ef4444'] }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+    });
+
+    // Chart Bar NoA Cabang
+    const cabNoA = groupBy(data, 'kdCabang', 'noA');
+    destroyChart('chartBarCabang');
+    charts['chartBarCabang'] = new Chart(document.getElementById('chartBarCabang'), {
+      type: 'bar',
+      data: {
+        labels: Object.keys(cabNoA),
+        datasets: [{ label: 'Total NoA', data: Object.values(cabNoA), backgroundColor: '#818cf8', borderRadius: 8 }]
+      },
+      options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    });
+  }
+
+  function destroyChart(id) {
+    if (charts[id]) charts[id].destroy();
+  }
+
+  function formatRupiahInput(el) {
+    let value = el.value.replace(/\D/g, '');
+    if (value) {
+      el.value = parseInt(value, 10).toLocaleString('id-ID');
+    } else {
+      el.value = '';
+    }
+  }
+
+  function handleFormSubmit(e) {
+    e.preventDefault();
+    
+    const formData = {
+      kdCabang: document.getElementById('inKdCabang').value.trim(),
+      namaPegawai: document.getElementById('inNamaPegawai').value.trim(),
+      jabatan: document.getElementById('inJabatan').value.trim(),
+      namaNasabah: document.getElementById('inNamaNasabah').value.trim(),
+      noRekening: document.getElementById('inNoRekening').value.trim(),
+      jenisNasabah: document.getElementById('inJenisNasabah').value.trim(),
+      produk: document.getElementById('inProduk').value.trim(),
+      segmentasi: document.getElementById('inSegmentasi').value.trim(),
+      kategoriNasabah: document.getElementById('inKategoriNasabah').value.trim(),
+      noA: document.getElementById('inNoA').value,
+      volumeDana: String(document.getElementById('inVolumeDana').value).replace(/[^0-9]/g, ''),
+      realisasi: document.getElementById('inRealisasi').value.trim(),
+      jenisNisbah: document.getElementById('inJenisNisbah').value.trim(),
+      keterangan: document.getElementById('inKeterangan').value.trim()
+    };
+
+    Swal.fire({
+      title: 'Simpan Transaksi?',
+      text: 'Pastikan seluruh isi formulir sudah benar.',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#4f46e5',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Ya, Simpan!',
+      cancelButtonText: 'Batal'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        Toast.fire({ icon: 'info', title: 'Menyimpan...' });
+
+        google.script.run
+          .withSuccessHandler(function(res) {
+            if(res.success) {
+              Swal.fire({
+                icon: 'success',
+                title: 'Berhasil Saved!',
+                text: 'Data transaksi berhasil ditambahkan.',
+                timer: 2000,
+                showConfirmButton: false
+              });
+              
+              document.getElementById('formInput').reset();
+              switchMenu('dashboard');
+              loadAllData();
+            } else {
+              Toast.fire({ icon: 'error', title: 'Gagal: ' + res.message });
+            }
+          })
+          .withFailureHandler(function(err) {
+            Toast.fire({ icon: 'error', title: 'Kesalahan Server!' });
+          })
+          .saveData(formData);
+      }
+    });
+  }
+
+  function openEditModal(no) {
+    const item = globalRawData.find(d => String(d.no) === String(no));
+    if (!item) return;
+
+    const pegNames = (masterOptions.pegawaiJabatan || []).map(p => p.nama);
+
+    populateDropdown('editKdCabang', masterOptions.kdCabang || []);
+    populateDropdown('editNamaPegawai', pegNames);
+    populateDropdown('editJenisNasabah', masterOptions.jenisNasabah || []);
+    populateDropdown('editProduk', masterOptions.produk || []);
+    populateDropdown('editSegmentasi', masterOptions.segmentasi || []);
+    populateDropdown('editKategoriNasabah', masterOptions.kategoriNasabah || []);
+    populateDropdown('editJenisNisbah', masterOptions.jenisNisbah || []);
+
+    document.getElementById('editNo').value = item.no;
+    document.getElementById('editKdCabang').value = item.kdCabang;
+    document.getElementById('editNamaPegawai').value = item.namaPegawai;
+    document.getElementById('editJabatan').value = item.jabatan;
+    document.getElementById('editNamaNasabah').value = item.namaNasabah;
+    document.getElementById('editNoRekening').value = item.noRekening;
+    document.getElementById('editJenisNasabah').value = item.jenisNasabah;
+    document.getElementById('editProduk').value = item.produk;
+    document.getElementById('editSegmentasi').value = item.segmentasi;
+    document.getElementById('editKategoriNasabah').value = item.kategoriNasabah;
+    document.getElementById('editNoA').value = item.noA || 1;
+    document.getElementById('editVolumeDana').value = (Number(item.volumeDana) || 0).toLocaleString('id-ID');
+    document.getElementById('editRealisasi').value = item.realisasi;
+    document.getElementById('editJenisNisbah').value = item.jenisNisbah;
+    document.getElementById('editKeterangan').value = item.keterangan || '';
+  }
+
+  function autoFillJabatanEdit() {
+    const name = document.getElementById('editNamaPegawai').value;
+    const found = (masterOptions.pegawaiJabatan || []).find(p => p.nama === name);
+    document.getElementById('editJabatan').value = found ? found.jabatan : '';
+  }
+
+  function handleEditSubmit(e) {
+    e.preventDefault();
+
+    const formData = {
+      no: document.getElementById('editNo').value,
+      kdCabang: document.getElementById('editKdCabang').value,
+      namaPegawai: document.getElementById('editNamaPegawai').value,
+      jabatan: document.getElementById('editJabatan').value,
+      namaNasabah: document.getElementById('editNamaNasabah').value,
+      noRekening: document.getElementById('editNoRekening').value,
+      jenisNasabah: document.getElementById('editJenisNasabah').value,
+      produk: document.getElementById('editProduk').value,
+      segmentasi: document.getElementById('editSegmentasi').value,
+      kategoriNasabah: document.getElementById('editKategoriNasabah').value,
+      noA: document.getElementById('editNoA').value,
+      volumeDana: String(document.getElementById('editVolumeDana').value).replace(/[^0-9]/g, ''),
+      realisasi: document.getElementById('editRealisasi').value,
+      jenisNisbah: document.getElementById('editJenisNisbah').value,
+      keterangan: document.getElementById('editKeterangan').value
+    };
+
+    Toast.fire({ icon: 'info', title: 'Memperbarui...' });
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.success) {
+          Toast.fire({ icon: 'success', title: 'Data Diperbarui!' });
+          const modalElement = document.getElementById('modalEdit');
+          if (modalElement) {
+            const modalInstance = bootstrap.Modal.getInstance(modalElement);
+            if (modalInstance) modalInstance.hide();
+          }
+          loadAllData();
+        } else {
+          Swal.fire({ icon: 'error', title: 'Gagal Update', text: res.message });
+        }
+      })
+      .withFailureHandler(function(err) {
+        Swal.fire({ icon: 'error', title: 'Error Server', text: err.message });
+      })
+      .updateData(formData);
+  }
+  function exportToExcel() {
+  // Ambil data yang sedang di-filter di dashboard
+  const fCabang = document.getElementById('filterCabang').value;
+  const fProduk = document.getElementById('filterProduk').value;
+  const fPegawai = document.getElementById('filterPegawai').value;
+  const fJabatan = document.getElementById('filterJabatan').value;
+  const fSegmen = document.getElementById('filterSegmen').value;
+  const fWeek = document.getElementById('filterWeek').value;
+
+  const dataFiltered = globalRawData.filter(item => {
+    return (!fCabang || item.kdCabang === fCabang) &&
+           (!fProduk || item.produk === fProduk) &&
+           (!fPegawai || item.namaPegawai === fPegawai) &&
+           (!fJabatan || item.jabatan === fJabatan) &&
+           (!fSegmen || item.segmentasi === fSegmen) &&
+           (!fWeek || item.week === fWeek);
+  });
+
+  if (dataFiltered.length === 0) {
+    Toast.fire({ icon: 'warning', title: 'Tidak ada data untuk di-export!' });
+    return;
+  }
+
+  // Formatting struktur kolom Excel yang rapi
+  const excelData = dataFiltered.map((row, index) => ({
+    "No": index + 1,
+    "Kode Cabang": row.kdCabang || '',
+    "Nama Pegawai": row.namaPegawai || '',
+    "Jabatan": row.jabatan || '',
+    "Nama Nasabah": row.namaNasabah || '',
+    "No Rekening": row.noRekening || '',
+    "Jenis Nasabah": row.jenisNasabah || '',
+    "Produk": row.produk || '',
+    "Segmentasi": row.segmentasi || '',
+    "Kategori Nasabah": row.kategoriNasabah || '',
+    "NoA": Number(row.noA) || 1,
+    "Volume Dana (Rp)": Number(row.volumeDana) || 0,
+    "Realisasi Week": row.realisasi || row.week || '',
+    "Jenis Nisbah": row.jenisNisbah || '',
+    "Keterangan": row.keterangan || ''
+  }));
+
+  // Buat worksheet & workbook Excel
+  const worksheet = XLSX.utils.json_to_sheet(excelData);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan DPK");
+
+  // Atur lebar kolom otomatis
+  const columnWidths = [
+    { wch: 5 },  // No
+    { wch: 15 }, // Kode Cabang
+    { wch: 25 }, // Nama Pegawai
+    { wch: 20 }, // Jabatan
+    { wch: 25 }, // Nama Nasabah
+    { wch: 20 }, // No Rekening
+    { wch: 15 }, // Jenis Nasabah
+    { wch: 20 }, // Produk
+    { wch: 18 }, // Segmentasi
+    { wch: 18 }, // Kategori Nasabah
+    { wch: 8 },  // NoA
+    { wch: 20 }, // Volume Dana
+    { wch: 15 }, // Realisasi Week
+    { wch: 15 }, // Jenis Nisbah
+    { wch: 25 }  // Keterangan
+  ];
+  worksheet['!cols'] = columnWidths;
+
+  // Nama file otomatis dengan tanggal saat ini
+  const today = new Date().toISOString().slice(0, 10);
+  const fileName = `Laporan_Selling_DPK_KC_Tasikmalaya_${today}.xlsx`;
+
+  // Download File Excel
+  XLSX.writeFile(workbook, fileName);
+  Toast.fire({ icon: 'success', title: 'Excel berhasil di-download!' });
+}
+
+let currentGoalSettings = [];
+
+// Fungsi membaca Target dari Google Sheets
+function loadGoalSettingsData(callback) {
+  google.script.run
+    .withSuccessHandler(function(data) {
+      currentGoalSettings = data || [];
+      if (callback) callback();
+    })
+    .getGoalSettingData();
+}
+
+// Render tampilan Goal Setting
+// Render utama tampilan Goal Setting
+function renderGoalSetting() {
+  loadGoalSettingsData(function() {
+    const filterCabangEl = document.getElementById('goalFilterCabang');
+    const filterProdukEl = document.getElementById('goalFilterProduk');
+
+    if (filterCabangEl && filterCabangEl.children.length === 0) {
+          // Mengisi dropdown filter dengan opsi default "Semua"
+          let htmlCabang = '<option value="">002 KONSOLIDASI</option>';
+          (masterOptions.kdCabang || []).forEach(item => {
+            if (item) htmlCabang += `<option value="${item}">${item}</option>`;
+          });
+          filterCabangEl.innerHTML = htmlCabang;
+
+          let htmlProduk = '<option value="">Semua Produk</option>';
+          (masterOptions.produk || []).forEach(item => {
+            if (item) htmlProduk += `<option value="${item}">${item}</option>`;
+          });
+          filterProdukEl.innerHTML = htmlProduk;
+        }
+
+    const selectedCabang = filterCabangEl ? filterCabangEl.value : '';
+    const selectedProduk = filterProdukEl ? filterProdukEl.value : '';
+
+    // 1. Ambil Target berdasarkan data sheet 'GoalSetting'
+    let totalTargetVol = 0;
+    let totalTargetNoA = 0;
+
+    if (currentGoalSettings && currentGoalSettings.length > 0) {
+      currentGoalSettings.forEach(g => {
+        if (!selectedCabang || g.kdCabang === selectedCabang) {
+          totalTargetVol += Number(g.targetVol) || 0;
+          totalTargetNoA += Number(g.targetNoA) || 0;
+        }
+      });
+    } else {
+      // Fallback jika sheet GoalSetting kosong: hitung dari target pegawai
+      (masterOptions.pegawaiJabatan || []).forEach(p => {
+        if (!selectedCabang || p.kdCabang === selectedCabang) {
+          totalTargetVol += (Number(p.targetVol) || 0);
+          totalTargetNoA += (Number(p.targetNoA) || 0);
+        }
+      });
+    }
+
+    // 2. Hitung Realisasi Sebulan berdasarkan Filter
+    const filteredData = globalRawData.filter(item => {
+      return (!selectedCabang || item.kdCabang === selectedCabang) &&
+             (!selectedProduk || item.produk === selectedProduk);
+    });
+
+    const totalRealVol = filteredData.reduce((sum, r) => sum + (Number(r.volumeDana) || 0), 0);
+    const totalRealNoA = filteredData.reduce((sum, r) => sum + (Number(r.noA) || 0), 0);
+    
+    const pctTotal = totalTargetVol > 0 ? ((totalRealVol / totalTargetVol) * 100).toFixed(1) : 0;
+    const gapVol = totalTargetVol - totalRealVol;
+
+    // Update UI Cards KPI
+    document.getElementById('goalTargetVol').innerText = `Rp ${totalTargetVol.toLocaleString('id-ID')}`;
+    document.getElementById('goalTargetNoA').innerText = `Target NoA: ${totalTargetNoA.toLocaleString('id-ID')} Account`;
+
+    document.getElementById('goalRealVol').innerText = `Rp ${totalRealVol.toLocaleString('id-ID')}`;
+    document.getElementById('goalRealNoA').innerText = `Realisasi NoA: ${totalRealNoA.toLocaleString('id-ID')} Account`;
+
+    document.getElementById('goalPctTotal').innerText = `${pctTotal}%`;
+    document.getElementById('goalGapVol').innerText = gapVol > 0 
+      ? `Sisa Target: Rp ${gapVol.toLocaleString('id-ID')}` 
+      : `Surplus: Rp ${Math.abs(gapVol).toLocaleString('id-ID')}`;
+
+    // 3. Panggil Pembuatan Grafik & Tabel Rincian
+    renderGoalChartAndTable(totalTargetVol, filteredData);
+  });
+}
+
+// Fungsi khusus membuat Grafik & Tabel Rincian Per Minggu
+function renderGoalChartAndTable(totalTargetVol, filteredData) {
+  const weeks = ['WEEK 1', 'WEEK 2', 'WEEK 3', 'WEEK 4', 'WEEK 5'];
+ const targetPerWeek = totalTargetVol / 5; // Pembagian target proporsional 5 minggu
+
+  // Kelompokkan realisasi per Week
+  const weekRealMap = {};
+  weeks.forEach(w => weekRealMap[w] = 0);
+  
+  filteredData.forEach(r => {
+    const w = r.week || r.realisasi;
+    if (weekRealMap[w] !== undefined) {
+      weekRealMap[w] += (Number(r.volumeDana) || 0);
+    }
+  });
+
+  // A. Render Tabel Rincian Komparasi
+  const tableBody = document.getElementById('goalTableBody');
+  if (tableBody) {
+    tableBody.innerHTML = weeks.map((w, idx) => {
+      const targetW = idx < 5 ? targetPerWeek : 0;
+      const realW = weekRealMap[w] || 0;
+      const pctW = targetW > 0 ? ((realW / targetW) * 100).toFixed(1) : (realW > 0 ? 100 : 0);
+      
+      let badgeClass = "bg-danger";
+      if (pctW >= 100) badgeClass = "bg-success";
+      else if (pctW >= 75) badgeClass = "bg-primary";
+      else if (pctW >= 50) badgeClass = "bg-warning text-dark";
+
+      return `
+        <tr>
+          <td><span class="fw-bold">${w}</span></td>
+          <td>Rp ${targetW.toLocaleString('id-ID')}</td>
+          <td>Rp ${realW.toLocaleString('id-ID')}</td>
+          <td><span class="fw-bold">${pctW}%</span></td>
+          <td><span class="badge ${badgeClass}">${pctW >= 100 ? 'Achieved' : 'On Progress'}</span></td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // B. Render Grafik Bar Komparasi
+  const chartCanvas = document.getElementById('chartGoalCompare');
+  if (chartCanvas) {
+    destroyChart('chartGoalCompare');
+    charts['chartGoalCompare'] = new Chart(chartCanvas, {
+      type: 'bar',
+      data: {
+        labels: weeks,
+        datasets: [
+          {
+            label: 'Target Volume (Rp)',
+            data: weeks.map((w, idx) => idx < 5 ? targetPerWeek : 0),
+            backgroundColor: '#cbd5e1',
+            borderColor: '#94a3b8',
+            borderWidth: 1,
+            borderRadius: 6
+          },
+          {
+            label: 'Realisasi Volume (Rp)',
+            data: weeks.map(w => weekRealMap[w] || 0),
+            backgroundColor: '#4f46e5',
+            borderRadius: 6
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' }
+        },
+        scales: {
+          y: {
+            ticks: {
+              callback: function(value) {
+                return 'Rp ' + (value / 1000000).toLocaleString('id-ID') + ' Jt';
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+}
+
+// Buka Modal Form Admin untuk Edit Target
+function openModalEditGoal() {
+  const container = document.getElementById('containerGoalInputs');
+  const cabangList = masterOptions.kdCabang || ['KC TASIKMALAYA'];
+
+  container.innerHTML = cabangList.map(cabang => {
+    const existing = currentGoalSettings.find(g => g.kdCabang === cabang) || {};
+    const valVol = existing.targetVol ? existing.targetVol.toLocaleString('id-ID') : '';
+    const valNoA = existing.targetNoA || '';
+
+    return `
+      <div class="card p-3 mb-3 bg-light border-0 rounded-3">
+        <h6 class="fw-bold text-primary mb-2"><i class="bi bi-building me-1"></i>${cabang}</h6>
+        <div class="row g-2">
+          <div class="col-7">
+            <label class="form-label small fw-bold">Target Volume (Rp)</label>
+            <input type="text" class="form-control goal-input-vol" data-cabang="${cabang}" value="${valVol}" onkeyup="formatRupiahInput(this)" placeholder="0">
+          </div>
+          <div class="col-5">
+            <label class="form-label small fw-bold">Target NoA</label>
+            <input type="number" class="form-control goal-input-noa" data-cabang="${cabang}" value="${valNoA}" placeholder="0">
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const modal = new bootstrap.Modal(document.getElementById('modalEditGoal'));
+  modal.show();
+}
+
+// Simpan Target Baru dari Modal Admin
+function saveGoalSettingAdmin(e) {
+  e.preventDefault();
+
+  const volInputs = document.querySelectorAll('.goal-input-vol');
+  const noaInputs = document.querySelectorAll('.goal-input-noa');
+
+  const payload = [];
+
+  volInputs.forEach(input => {
+    const cabang = input.getAttribute('data-cabang');
+    const rawVol = input.value.replace(/[^0-9]/g, '');
+    
+    // Cari pasangan noa
+    let rawNoA = 0;
+    noaInputs.forEach(noaInput => {
+      if (noaInput.getAttribute('data-cabang') === cabang) {
+        rawNoA = noaInput.value;
+      }
+    });
+
+    payload.push({
+      kdCabang: cabang,
+      targetVol: Number(rawVol) || 0,
+      targetNoA: Number(rawNoA) || 0
+    });
+  });
+
+  Toast.fire({ icon: 'info', title: 'Menyimpan Target Baru...' });
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res.success) {
+        Toast.fire({ icon: 'success', title: 'Goal Setting Diperbarui!' });
+        
+        const modalEl = document.getElementById('modalEditGoal');
+        const modalInst = bootstrap.Modal.getInstance(modalEl);
+        if (modalInst) modalInst.hide();
+
+        renderGoalSetting();
+      } else {
+        Swal.fire({ icon: 'error', title: 'Gagal', text: res.message });
+      }
+    })
+    .updateGoalSettingSheet(payload);
+}
+</script>
