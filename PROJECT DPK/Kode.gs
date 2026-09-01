@@ -209,7 +209,7 @@ function updateData(form) {
     return { success: false, message: error.message || error.toString() };
   }
 }
-// Fungsi membaca data Goal Setting dari Sheet 'GoalSetting'
+// Membaca data Goal Setting per Cabang & Produk
 function getGoalSettingData() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -221,6 +221,7 @@ function getGoalSettingData() {
 
     const headers = data[0].map(h => String(h).trim().toLowerCase());
     const idxCabang = headers.indexOf('kdcabang');
+    const idxProduk = headers.indexOf('produk');
     const idxVol = headers.indexOf('targetvol');
     const idxNoA = headers.indexOf('targetnoa');
 
@@ -230,6 +231,7 @@ function getGoalSettingData() {
       if (row[idxCabang]) {
         result.push({
           kdCabang: String(row[idxCabang]),
+          produk: idxProduk !== -1 ? String(row[idxProduk]) : '',
           targetVol: Number(row[idxVol]) || 0,
           targetNoA: Number(row[idxNoA]) || 0
         });
@@ -238,6 +240,39 @@ function getGoalSettingData() {
     return result;
   } catch (err) {
     return [];
+  }
+}
+
+// Menyimpan pembaruan Target per Cabang & Produk dari Admin
+function updateGoalSettingSheet(dataList) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName('GoalSetting');
+    
+    if (!sheet) {
+      sheet = ss.insertSheet('GoalSetting');
+      sheet.appendRow(['KdCabang', 'Produk', 'TargetVol', 'TargetNoA']);
+    }
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, 4).clearContent();
+    }
+
+    const rowsToInsert = dataList.map(item => [
+      item.kdCabang,
+      item.produk,
+      Number(item.targetVol) || 0,
+      Number(item.targetNoA) || 0
+    ]);
+
+    if (rowsToInsert.length > 0) {
+      sheet.getRange(2, 1, rowsToInsert.length, 4).setValues(rowsToInsert);
+    }
+
+    return { success: true, message: 'Goal Setting per Produk berhasil diperbarui!' };
+  } catch (err) {
+    return { success: false, message: err.message };
   }
 }
 
