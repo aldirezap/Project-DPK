@@ -305,7 +305,122 @@
         display: none !important;
       }
     }
+    /* PRINT STYLES KHUSUS MENU GOAL SETTING */
+    @media print {
+      @page {
+        size: A4 landscape;
+        margin: 8mm;
+      }
+
+      /* Sembunyikan elemen navigasi, filter, dan tombol edit admin */
+      .sidebar, 
+      .mobile-nav, 
+      .btn-actions, 
+      .filter-section, 
+      #sectionInput, 
+      .modal, 
+      .modal-backdrop,
+      .text-center:has(.btn-outline-primary),
+      #sectionGoalSetting .btn, 
+      #sectionGoalSetting .filter-section { 
+        display: none !important; 
+      }
+
+      /* Pastikan section Goal Setting tampil penuh jika sedang aktif */
+      #sectionGoalSetting {
+        display: block !important;
+        width: 100% !important;
+        page-break-inside: auto;
+      }
+
+      /* Layout KPI Cards agar rapi sejajar dan tidak menumpuk */
+      #sectionGoalSetting .row.g-3.mb-4:first-of-type {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 10px !important;
+        margin-bottom: 15px !important;
+      }
+
+      #sectionGoalSetting .col-12.col-md-4 {
+        width: 33.33% !important;
+        float: left !important;
+      }
+
+      .stat-card {
+        padding: 10px 12px !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 8px !important;
+        box-shadow: none !important;
+      }
+
+      /* Pengaturan Layout Grafik dan Tabel Komparasi */
+      #sectionGoalSetting .row.g-3.mb-4:last-of-type {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 15px !important;
+      }
+
+      /* Grafik dan Tabel dibagi 2 Kolom Sejajar (50% - 50%) */
+      #sectionGoalSetting .col-12.col-md-6 {
+        width: 50% !important;
+        float: left !important;
+      }
+
+      .card-custom {
+        box-shadow: none !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 8px !important;
+        break-inside: avoid;
+        margin-bottom: 10px !important;
+        padding: 12px !important;
+      }
+
+      /* Ukuran Container Chart Saat Print Agar Tidak Menumpuk / Melimpah */
+      .chart-container {
+        position: relative !important;
+        height: 240px !important;
+        max-height: 240px !important;
+        width: 100% !important;
+      }
+
+      /* Perapihan Tabel Komparasi */
+      .table-responsive {
+        overflow: visible !important;
+        max-height: none !important;
+        height: auto !important;
+      }
+
+      table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        font-size: 10px !important;
+      }
+
+      th, td {
+        padding: 6px 8px !important;
+        white-space: nowrap !important;
+      }
+
+      thead {
+        display: table-header-group;
+      }
+
+      tr {
+        break-inside: avoid;
+      }
+
+      /* Penyesuaian Badge Status */
+      .badge {
+        border: 1px solid #94a3b8 !important;
+        color: #000000 !important;
+        background-color: transparent !important;
+        font-weight: bold !important;
+      }
+    }
   </style>
+  
 </head>
 <body>
 
@@ -375,7 +490,7 @@
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4 gap-3 btn-actions">
       <div>
         <h3 class="fw-extrabold mb-1 d-flex align-items-center gap-2">
-          <span>MONITORING SELLING DPK</span>
+          <span>DASHBOARD MONITORING PENJUALAN PRODUK DPK</span>
           <span class="badge bg-success-subtle text-success fs-6 fw-bold">Live Data</span>
         </h3>
         <p class="text-muted mb-0 small"><i class="bi bi-geo-alt-fill text-danger me-1"></i>Kantor Cabang Tasikmalaya - Performance Dashboard</p>
@@ -536,7 +651,7 @@
       <div class="row g-3 mb-4">
         <div class="col-12 col-md-6">
           <div class="card-custom p-4 bg-white">
-            <h6 class="fw-bold mb-3"><i class="bi bi-graph-up-arrow text-warning me-2"></i>Tren Realisasi vs Target (Mingguan)</h6>
+            <h6 class="fw-bold mb-3"><i class="bi bi-graph-up-arrow text-warning me-2"></i>Tren Realisasi Volume Per Week</h6>
             <div class="chart-container">
               <canvas id="chartLineTarget"></canvas>
             </div>
