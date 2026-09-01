@@ -46,19 +46,141 @@
       color: var(--text-main);
       overflow-x: hidden;
     }
+    
 
     /* GLASS CARD CUSTOM */
-    .card-custom {
-      background: var(--card-bg);
-      border-radius: 20px;
-      border: 1px solid rgba(226, 232, 240, 0.8);
-      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04);
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
+/* =========================================================
+   EFEK HOVER HOVER / LIFT-UP SAAT KURSOR DIARAHKAN
+   ========================================================= */
+
+  /* 1. Efek Terangkat untuk Card Utama & Card Grafik */
+  .card-custom {
+    background: var(--card-bg);
+    border-radius: 20px;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04);
+    /* Tambahkan transisi halus pada transform & box-shadow */
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), 
+                box-shadow 0.3s ease, 
+                border-color 0.3s ease !important;
+    will-change: transform;
+  }
+
+  /* Saat Kursor Diarahkan ke Card Custom */
+  .card-custom:hover {
+    transform: translateY(-8px) scale(1.01); /* Terangkat ke atas 8px & sedikit membesar */
+    box-shadow: 0 20px 35px -10px rgba(79, 70, 229, 0.15) !important;
+    border-color: rgba(79, 70, 229, 0.3) !important;
+    cursor: pointer;
+  }
+
+  /* 2. Efek Terangkat Khusus Kartu KPI (Stat Card) */
+  .stat-card {
+    padding: 24px;
+    border-radius: 20px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-6px); /* Terangkat 6px ke atas */
+    box-shadow: 0 12px 25px -5px rgba(0, 0, 0, 0.1) !important;
+  }
+
+  /* Efek Animasi Membesar pada Ikon di Dalam Stat Card Saat Di-hover */
+  .stat-card:hover .stat-icon-wrapper {
+    transform: scale(1.1) rotate(5deg);
+    transition: transform 0.3s ease;
+  }
+
+  .stat-icon-wrapper {
+    transition: transform 0.3s ease;
+  }
+
+  /* 3. Efek Terangkat untuk Baris Tabel Saat Diarahkan */
+  .table-hover tbody tr {
+    transition: transform 0.2s ease, background-color 0.2s ease;
+  }
+
+  .table-hover tbody tr:hover {
+    transform: scale(1.005) translateY(-2px); /* Terangkat tipis saat kursor di atas baris tabel */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    background-color: #f8fafc !important;
+    position: relative;
+    z-index: 10;
+  }
+
+  /* 4. Efek Terangkat pada Tombol (Button) */
+  .btn {
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease !important;
+  }
+
+  .btn:hover {
+    transform: translateY(-3px); /* Tombol terangkat 3px saat di-hover */
+  }
+
+  .btn:active {
+    transform: translateY(-1px); /* Efek membal saat ditekan */
+  }
 
     .card-custom:hover {
       box-shadow: 0 20px 35px -10px rgba(79, 70, 229, 0.07);
     }
+
+      /* Efek Glassmorphism pada Card */
+  .card-custom {
+    background: rgba(255, 255, 255, 0.85) !important;
+    backdrop-filter: blur(12px); /* Efek blur di belakang card */
+    border: 1px solid rgba(255, 255, 255, 0.5) !important;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Efek Kilatan Cahaya (Shimmer) saat Hover */
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.4),
+      transparent
+    );
+    transition: 0.6s;
+  }
+    /* Efek Glow Menyala pada Kartu KPI Utama saat Hover */
+  .stat-card-primary:hover {
+    box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.4) !important;
+  }
+
+  .stat-card-success:hover {
+    box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.4) !important;
+  }
+
+  .stat-card-warning:hover {
+    box-shadow: 0 10px 25px -5px rgba(245, 158, 11, 0.4) !important;
+  }
+
+  .stat-card:hover::before {
+    left: 100%;
+  }
+  /* Variasi Warna Pulsing Dot */
+.badge-pulse.green { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.badge-pulse.green .pulse-dot, .badge-pulse.green .pulse-dot::after { background-color: #10b981; }
+
+.badge-pulse.yellow { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.badge-pulse.yellow .pulse-dot, .badge-pulse.yellow .pulse-dot::after { background-color: #f59e0b; }
+
+.badge-pulse.red { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.badge-pulse.red .pulse-dot, .badge-pulse.red .pulse-dot::after { background-color: #ef4444; }
+
+.badge-pulse.blue { background: rgba(79, 70, 229, 0.1); color: #4f46e5; }
+.badge-pulse.blue .pulse-dot, .badge-pulse.blue .pulse-dot::after { background-color: #4f46e5; }
 
     /* DESKTOP SIDEBAR */
     .sidebar {
@@ -507,6 +629,13 @@
         <button class="btn btn-gradient-primary" onclick="window.print()">
           <i class="bi bi-printer-fill me-1"></i> Cetak Laporan
         </button>
+        <!-- Contoh di Header Utama -->
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge-pulse green">
+          <span class="pulse-dot"></span>
+          <span>Live Update: <strong id="currentDate"> September 2026</strong></span>
+        </span>
+      </div>
       </div>
     </div>
 
