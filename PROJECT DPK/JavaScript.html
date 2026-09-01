@@ -387,7 +387,6 @@ function switchMenu(menu) {
         labels: weeks,
         datasets: [
           { label: 'Realisasi Volume', data: weeks.map(w => weekVol[w] || 0), borderColor: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.1)', fill: true, tension: 0.4 },
-          { label: 'Target Week', data: weeks.map(() => (targetVol || 0)/5), borderColor: '#ef4444', borderDash: [5,5] }
         ]
       },
       options: { responsive: true, maintainAspectRatio: false }
@@ -658,55 +657,46 @@ function loadGoalSettingsData(callback) {
 }
 
 // Render tampilan Goal Setting
-// Render utama tampilan Goal Setting
+// Render Goal Setting dengan dukungan Filter Cabang & Produk
 function renderGoalSetting() {
   loadGoalSettingsData(function() {
     const filterCabangEl = document.getElementById('goalFilterCabang');
     const filterProdukEl = document.getElementById('goalFilterProduk');
 
     if (filterCabangEl && filterCabangEl.children.length === 0) {
-          // Mengisi dropdown filter dengan opsi default "Semua"
-          let htmlCabang = '<option value="">002 KONSOLIDASI</option>';
-          (masterOptions.kdCabang || []).forEach(item => {
-            if (item) htmlCabang += `<option value="${item}">${item}</option>`;
-          });
-          filterCabangEl.innerHTML = htmlCabang;
+      let htmlCabang = '<option value="">Semua Cabang</option>';
+      (masterOptions.kdCabang || []).forEach(item => { if (item) htmlCabang += `<option value="${item}">${item}</option>`; });
+      filterCabangEl.innerHTML = htmlCabang;
 
-          let htmlProduk = '<option value="">Semua Produk</option>';
-          (masterOptions.produk || []).forEach(item => {
-            if (item) htmlProduk += `<option value="${item}">${item}</option>`;
-          });
-          filterProdukEl.innerHTML = htmlProduk;
-        }
+      let htmlProduk = '<option value="">Semua Produk</option>';
+      ['Giro', 'Tabungan', 'Deposito'].forEach(item => { htmlProduk += `<option value="${item}">${item}</option>`; });
+      filterProdukEl.innerHTML = htmlProduk;
+    }
 
     const selectedCabang = filterCabangEl ? filterCabangEl.value : '';
     const selectedProduk = filterProdukEl ? filterProdukEl.value : '';
 
-    // 1. Ambil Target berdasarkan data sheet 'GoalSetting'
+    // 1. Akumulasi Target dari Sheet GoalSetting
     let totalTargetVol = 0;
     let totalTargetNoA = 0;
 
     if (currentGoalSettings && currentGoalSettings.length > 0) {
       currentGoalSettings.forEach(g => {
-        if (!selectedCabang || g.kdCabang === selectedCabang) {
+        const matchCabang = !selectedCabang || g.kdCabang === selectedCabang;
+        const matchProduk = !selectedProduk || g.produk.toLowerCase() === selectedProduk.toLowerCase();
+
+        if (matchCabang && matchProduk) {
           totalTargetVol += Number(g.targetVol) || 0;
           totalTargetNoA += Number(g.targetNoA) || 0;
         }
       });
-    } else {
-      // Fallback jika sheet GoalSetting kosong: hitung dari target pegawai
-      (masterOptions.pegawaiJabatan || []).forEach(p => {
-        if (!selectedCabang || p.kdCabang === selectedCabang) {
-          totalTargetVol += (Number(p.targetVol) || 0);
-          totalTargetNoA += (Number(p.targetNoA) || 0);
-        }
-      });
     }
 
-    // 2. Hitung Realisasi Sebulan berdasarkan Filter
+    // 2. Akumulasi Realisasi
     const filteredData = globalRawData.filter(item => {
-      return (!selectedCabang || item.kdCabang === selectedCabang) &&
-             (!selectedProduk || item.produk === selectedProduk);
+      const matchCabang = !selectedCabang || item.kdCabang === selectedCabang;
+      const matchProduk = !selectedProduk || (item.produk && item.produk.toLowerCase().includes(selectedProduk.toLowerCase()));
+      return matchCabang && matchProduk;
     });
 
     const totalRealVol = filteredData.reduce((sum, r) => sum + (Number(r.volumeDana) || 0), 0);
@@ -715,7 +705,7 @@ function renderGoalSetting() {
     const pctTotal = totalTargetVol > 0 ? ((totalRealVol / totalTargetVol) * 100).toFixed(1) : 0;
     const gapVol = totalTargetVol - totalRealVol;
 
-    // Update UI Cards KPI
+    // Update UI Cards
     document.getElementById('goalTargetVol').innerText = `Rp ${totalTargetVol.toLocaleString('id-ID')}`;
     document.getElementById('goalTargetNoA').innerText = `Target NoA: ${totalTargetNoA.toLocaleString('id-ID')} Account`;
 
@@ -727,9 +717,96 @@ function renderGoalSetting() {
       ? `Sisa Target: Rp ${gapVol.toLocaleString('id-ID')}` 
       : `Surplus: Rp ${Math.abs(gapVol).toLocaleString('id-ID')}`;
 
-    // 3. Panggil Pembuatan Grafik & Tabel Rincian
     renderGoalChartAndTable(totalTargetVol, filteredData);
   });
+}
+
+// Open Modal Admin Edit Target per Cabang & Produk (Giro, Tabungan, Deposito)
+function openModalEditGoal() {
+  const container = document.getElementById('containerGoalInputs');
+  const cabangList = masterOptions.kdCabang || ['KC TASIKMALAYA'];
+  const produkList = ['Giro', 'Tabungan', 'Deposito'];
+
+  let html = '';
+
+  cabangList.forEach(cabang => {
+    html += `
+      <div class="card p-3 mb-3 bg-light border-0 rounded-3">
+        <h6 class="fw-bold text-primary mb-2"><i class="bi bi-building me-1"></i>${cabang}</h6>
+    `;
+
+    produkList.forEach(produk => {
+      const existing = currentGoalSettings.find(g => g.kdCabang === cabang && g.produk.toLowerCase() === produk.toLowerCase()) || {};
+      const valVol = existing.targetVol ? existing.targetVol.toLocaleString('id-ID') : '';
+      const valNoA = existing.targetNoA || '';
+
+      html += `
+        <div class="p-2 mb-2 bg-white rounded border">
+          <span class="badge bg-secondary mb-2">${produk}</span>
+          <div class="row g-2">
+            <div class="col-7">
+              <label class="form-label small fw-bold mb-1">Target Volume (Rp)</label>
+              <input type="text" class="form-control form-control-sm goal-input-vol" data-cabang="${cabang}" data-produk="${produk}" value="${valVol}" onkeyup="formatRupiahInput(this)" placeholder="0">
+            </div>
+            <div class="col-5">
+              <label class="form-label small fw-bold mb-1">Target NoA</label>
+              <input type="number" class="form-control form-control-sm goal-input-noa" data-cabang="${cabang}" data-produk="${produk}" value="${valNoA}" placeholder="0">
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+  });
+
+  container.innerHTML = html;
+  const modal = new bootstrap.Modal(document.getElementById('modalEditGoal'));
+  modal.show();
+}
+
+// Simpan Data Target per Produk
+function saveGoalSettingAdmin(e) {
+  e.preventDefault();
+
+  const volInputs = document.querySelectorAll('.goal-input-vol');
+  const payload = [];
+
+  volInputs.forEach(input => {
+    const cabang = input.getAttribute('data-cabang');
+    const produk = input.getAttribute('data-produk');
+    const rawVol = input.value.replace(/[^0-9]/g, '');
+    
+    let rawNoA = 0;
+    document.querySelectorAll('.goal-input-noa').forEach(noaInput => {
+      if (noaInput.getAttribute('data-cabang') === cabang && noaInput.getAttribute('data-produk') === produk) {
+        rawNoA = noaInput.value;
+      }
+    });
+
+    payload.push({
+      kdCabang: cabang,
+      produk: produk,
+      targetVol: Number(rawVol) || 0,
+      targetNoA: Number(rawNoA) || 0
+    });
+  });
+
+  Toast.fire({ icon: 'info', title: 'Menyimpan Target Baru...' });
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res.success) {
+        Toast.fire({ icon: 'success', title: 'Goal Setting Diperbarui!' });
+        const modalEl = document.getElementById('modalEditGoal');
+        const modalInst = bootstrap.Modal.getInstance(modalEl);
+        if (modalInst) modalInst.hide();
+        renderGoalSetting();
+      } else {
+        Swal.fire({ icon: 'error', title: 'Gagal', text: res.message });
+      }
+    })
+    .updateGoalSettingSheet(payload);
 }
 
 // Fungsi khusus membuat Grafik & Tabel Rincian Per Minggu
